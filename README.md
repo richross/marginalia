@@ -36,6 +36,12 @@ survive ordinary application/container restarts. Keep the Aspire endpoints on
 their local host addresses; do not expose endpoints to the LAN, add a tunnel,
 or enable external endpoints.
 
+The root URL is a public welcome page with a GitHub sign-in link. The Inbox and
+other library routes remain owner-protected; after sign-in, the link returns to
+`/inbox`. Until OAuth is configured, the welcome page explains that setup is
+pending and the sign-in endpoint provides the local callback and configuration
+steps.
+
 ## GitHub owner authentication
 
 Marginalia uses a server-side GitHub OAuth authorization-code flow and a

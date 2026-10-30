@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#123952">
+    <title>Marginalia · A private library for links worth keeping</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" type="image/svg+xml" href="/icon.svg">
+    <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png">
+    <link rel="stylesheet" href="/app.css">
+    <link rel="stylesheet" href="/welcome.css">
+</head>
+<body>
+    <div class="welcome-page">
+        <header class="welcome-header">
+            <a class="welcome-brand" href="/" aria-label="Marginalia home">
+                <span class="welcome-brand-glyph" aria-hidden="true"></span>
+                <span>Marginalia</span>
+            </a>
+            <span class="welcome-header-note">Your links, gathered in one place</span>
+        </header>
+
+        <main class="welcome-main">
+            <section class="welcome-intro" aria-labelledby="welcome-heading">
+                <div class="welcome-copy">
+                    <h1 id="welcome-heading">Keep the links you mean to come back to.</h1>
+                    <p class="welcome-lede">
+                        Marginalia brings RSS arrivals and links you save yourself into one private,
+                        searchable reference library.
+                    </p>
+                    <a class="button button-primary welcome-sign-in" href="/account/login?returnUrl=%2Finbox">
+                        Sign in with GitHub
+                    </a>
+                    <!--oauth-setup-note-->
+                    <p class="welcome-privacy">
+                        <span class="welcome-privacy-mark" aria-hidden="true"></span>
+                        Private to your configured GitHub account
+                    </p>
+                </div>
+
+                <aside class="welcome-register" aria-labelledby="welcome-register-heading">
+                    <div class="welcome-register-heading">
+                        <span class="welcome-register-rule" aria-hidden="true"></span>
+                        <h2 id="welcome-register-heading">From arrival to reference</h2>
+                    </div>
+                    <ol class="welcome-flow">
+                        <li>
+                            <span class="welcome-flow-label">RSS FEEDS</span>
+                            <div>
+                                <strong>Review in your Inbox</strong>
+                                <p>Choose what belongs in your library, one article at a time.</p>
+                            </div>
+                        </li>
+                        <li>
+                            <span class="welcome-flow-label">LINKS YOU FIND</span>
+                            <div>
+                                <strong>Save a URL directly</strong>
+                                <p>Keep a useful page for later without waiting for a feed.</p>
+                            </div>
+                        </li>
+                        <li>
+                            <span class="welcome-flow-label">YOUR LIBRARY</span>
+                            <div>
+                                <strong>Find it when you need it</strong>
+                                <p>Search and organize links with notes, tags, and collections.</p>
+                            </div>
+                        </li>
+                    </ol>
+                    <p class="welcome-register-note">Read each article on its original website.</p>
+                </aside>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

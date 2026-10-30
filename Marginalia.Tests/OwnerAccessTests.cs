@@ -105,6 +105,26 @@ public sealed class OwnerAccessTests
         using var response = await client.GetAsync("/api/access-check");
 
         Assert.AreEqual(System.Net.HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.AreNotEqual("text/html", response.Content.Headers.ContentType?.MediaType);
+    }
+
+    [TestMethod]
+    public async Task UnconfiguredApplicationShowsPublicWelcomeAndKeepsInboxProtected()
+    {
+        using var factory = CreateFactory(injectTestAuthorization: false);
+        using var client = factory.CreateClient();
+
+        using var welcome = await client.GetAsync("/");
+        var welcomeHtml = await welcome.Content.ReadAsStringAsync();
+
+        Assert.AreEqual(System.Net.HttpStatusCode.OK, welcome.StatusCode);
+        Assert.AreEqual("text/html", welcome.Content.Headers.ContentType?.MediaType);
+        Assert.IsTrue(welcomeHtml.Contains("<h1 id=\"welcome-heading\">Keep the links you mean to come back to.</h1>", StringComparison.Ordinal));
+        Assert.IsTrue(welcomeHtml.Contains("href=\"/account/login?returnUrl=%2Finbox\"", StringComparison.Ordinal));
+        Assert.IsTrue(welcomeHtml.Contains("GitHub sign-in is not configured yet", StringComparison.Ordinal));
+
+        using var inbox = await client.GetAsync("/inbox");
+        Assert.AreEqual(System.Net.HttpStatusCode.Unauthorized, inbox.StatusCode);
     }
 
     [TestMethod]
@@ -114,8 +134,12 @@ public sealed class OwnerAccessTests
         using var client = factory.CreateClient();
 
         using var response = await client.GetAsync("/account/login");
+        var html = await response.Content.ReadAsStringAsync();
 
         Assert.AreEqual(System.Net.HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.IsTrue(html.Contains("GitHub sign-in setup required", StringComparison.Ordinal));
+        Assert.IsTrue(html.Contains("GitHubOAuth:ClientId", StringComparison.Ordinal));
+        Assert.IsTrue(html.Contains("https://localhost:7144/signin-github", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -395,6 +419,8 @@ public sealed class OwnerAccessTests
                      "/manifest.webmanifest",
                      "/service-worker.js",
                      "/app.css",
+                     "/welcome.css",
+                     "/welcome.html",
                      "/offline.html",
                      "/icon-192.png"
                  })
@@ -407,9 +433,11 @@ public sealed class OwnerAccessTests
         }
 
         using var page = await client.GetAsync("/");
+        using var inbox = await client.GetAsync("/inbox");
         using var api = await client.GetAsync("/api/access-check");
         using var export = await client.GetAsync("/api/library/export.json");
-        Assert.AreEqual(System.Net.HttpStatusCode.Unauthorized, page.StatusCode);
+        Assert.AreEqual(System.Net.HttpStatusCode.OK, page.StatusCode);
+        Assert.AreEqual(System.Net.HttpStatusCode.Unauthorized, inbox.StatusCode);
         Assert.AreEqual(System.Net.HttpStatusCode.Unauthorized, api.StatusCode);
         Assert.AreEqual(System.Net.HttpStatusCode.Unauthorized, export.StatusCode);
     }
@@ -428,7 +456,7 @@ public sealed class OwnerAccessTests
 
         var routes = new (string Path, string Heading)[]
         {
-            ("/", "<h1>Inbox</h1>"),
+            ("/inbox", "<h1>Inbox</h1>"),
             ("/library", "<h1>Saved library</h1>"),
             ("/capture", "<h1>Capture a URL</h1>"),
             ("/feeds", "<h1>Feeds</h1>"),
@@ -449,7 +477,7 @@ public sealed class OwnerAccessTests
                 Assert.IsTrue(html.Contains("Import Saved links", StringComparison.Ordinal));
                 Assert.IsTrue(html.Contains("configured GitHub account", StringComparison.Ordinal));
             }
-            if (path == "/")
+            if (path == "/inbox")
             {
                 Assert.IsTrue(html.Contains("account/logout", StringComparison.Ordinal));
                 Assert.IsTrue(html.Contains("__RequestVerificationToken", StringComparison.Ordinal));

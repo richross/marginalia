@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
     <ProjectReference Include="..\Marginalia.ServiceDefaults\Marginalia.ServiceDefaults.csproj" />
@@ -20,6 +20,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <UserSecretsId>0c17c6cc-5818-4256-b4b7-17f889f86f90</UserSecretsId>
   </PropertyGroup>
 
 </Project>

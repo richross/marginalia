@@ -251,12 +251,37 @@ app.UseAntiforgery();
 await app.Services.GetRequiredService<IDatabaseInitializer>().InitializeAsync();
 
 app.MapDefaultEndpoints();
+var welcomePage = await File.ReadAllTextAsync(
+    Path.Combine(app.Environment.WebRootPath, "welcome.html"));
+var welcomeSetupNote = githubSettings is null
+    ? """
+      <p class="welcome-setup" role="status">GitHub sign-in is not configured yet. Register the local OAuth app and add its settings before signing in.</p>
+      """
+    : string.Empty;
+welcomePage = welcomePage.Replace("<!--oauth-setup-note-->", welcomeSetupNote, StringComparison.Ordinal);
+app.MapGet("/", () => Results.Content(welcomePage, "text/html; charset=utf-8"))
+    .AllowAnonymous();
 app.MapGet("/account/login", (HttpContext context) =>
     {
         if (githubSettings is null)
         {
-            return Results.Problem(
-                "GitHub owner authentication is not configured.",
+            return Results.Content(
+                """
+                <!doctype html>
+                <html lang="en">
+                <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>GitHub sign-in setup required · Marginalia</title></head>
+                <body>
+                  <main>
+                    <h1>GitHub sign-in setup required</h1>
+                    <p>Marginalia is running, but GitHub owner sign-in has not been configured yet.</p>
+                    <p>Register the local GitHub OAuth app, then set <code>GitHubOAuth:ClientId</code>, <code>GitHubOAuth:ClientSecret</code>, and <code>GitHubOAuth:OwnerId</code> with .NET user-secrets.</p>
+                    <p>OAuth callback URL: <code>https://localhost:7144/signin-github</code></p>
+                    <p><a href="/">Return to Marginalia</a></p>
+                  </main>
+                </body>
+                </html>
+                """,
+                "text/html; charset=utf-8",
                 statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
