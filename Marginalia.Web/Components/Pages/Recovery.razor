@@ -1,0 +1,152 @@
+﻿@page "/recovery"
+@using System.Data.Common
+@using Marginalia.Web.Application
+@using Marginalia.Web.Domain
+@using Marginalia.Web.Components.Shared
+@inject IServiceScopeFactory ScopeFactory
+
+<PageTitle>Recovery · Marginalia</PageTitle>
+
+<section class="page-heading">
+    <div>
+        <h1>Recovery</h1>
+        <p>Dismissed Inbox items and trashed Saved links remain recoverable for 30 days.</p>
+    </div>
+</section>
+
+<nav class="state-register" aria-label="Recovery category">
+    <a href="/recovery?state=dismissed"
+       class="@(SelectedState == ArticleState.Dismissed ? "state-tab state-tab-current" : "state-tab")"
+       aria-current="@(SelectedState == ArticleState.Dismissed ? "page" : null)">
+        Dismissed Inbox
+    </a>
+    <a href="/recovery?state=trash"
+       class="@(SelectedState == ArticleState.Trashed ? "state-tab state-tab-current" : "state-tab")"
+       aria-current="@(SelectedState == ArticleState.Trashed ? "page" : null)">
+        Trash
+    </a>
+</nav>
+
+<section class="register-column recovery-register" aria-labelledby="recovery-heading">
+    <div class="section-heading">
+        <h2 id="recovery-heading">@(SelectedState == ArticleState.Dismissed ? "Dismissed items" : "Trashed links")</h2>
+        @if (!_loading)
+        {
+            <p>@_totalCount item(s) in recovery</p>
+        }
+    </div>
+
+    @if (_loading && _articles.Count == 0)
+    {
+        <p class="loading-state" role="status">Loading recovery items…</p>
+    }
+    else if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <div class="empty-state" role="alert">
+            <h3>Recovery items could not be loaded</h3>
+            <p>@_error</p>
+            <button class="button button-primary" type="button" disabled="@(!IsOnline)" @onclick="LoadAsync">Try again</button>
+        </div>
+    }
+    else if (_articles.Count == 0)
+    {
+        <div class="empty-state">
+            <h3>@(SelectedState == ArticleState.Dismissed ? "No dismissed Inbox items" : "Trash is clear")</h3>
+            <p>@(SelectedState == ArticleState.Dismissed
+                ? "Dismissed feed arrivals that are still within their recovery period will appear here."
+                : "Saved links moved to Trash will appear here until their recovery period ends.")</p>
+        </div>
+    }
+    else
+    {
+        <div class="docket-register">
+            @foreach (var article in _articles)
+            {
+                <ArticleDocket Item="article" Feeds="_feeds" OnChanged="LoadAsync" />
+            }
+        </div>
+        @if (_articles.Count < _totalCount)
+        {
+            <button class="button button-outline load-more"
+                    type="button"
+                    disabled="@(!IsOnline || _loading)"
+                    @onclick="LoadMoreAsync">
+                @(_loading ? "Loading…" : "Load more")
+            </button>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, SupplyParameterFromQuery(Name = "state")]
+    public string? StateFilter { get; set; }
+
+    [CascadingParameter]
+    public bool IsOnline { get; set; } = true;
+
+    private readonly List<ArticleListItem> _articles = [];
+    private FeedSubscriptionSummary[] _feeds = [];
+    private long _totalCount;
+    private int _pageNumber = 1;
+    private bool _loading;
+    private string? _error;
+
+    private ArticleState SelectedState =>
+        string.Equals(StateFilter, "trash", StringComparison.OrdinalIgnoreCase)
+            ? ArticleState.Trashed
+            : ArticleState.Dismissed;
+
+    protected override Task OnParametersSetAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _pageNumber = 1;
+        _articles.Clear();
+        await LoadPageAsync(append: false);
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        if (_loading || _articles.Count >= _totalCount)
+        {
+            return;
+        }
+
+        _pageNumber++;
+        await LoadPageAsync(append: true);
+    }
+
+    private async Task LoadPageAsync(bool append)
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var services = scope.ServiceProvider;
+            var page = await services.GetRequiredService<LibraryQueryService>()
+                .SearchAsync(new ArticleSearchRequest(
+                    State: SelectedState,
+                    PageNumber: _pageNumber,
+                    PageSize: 30));
+            _feeds = await services.GetRequiredService<FeedSubscriptionService>().ListAsync();
+            _totalCount = page.TotalCount;
+            if (append)
+            {
+                _articles.AddRange(page.Items);
+            }
+            else
+            {
+                _articles.AddRange(page.Items);
+            }
+        }
+        catch (DbException)
+        {
+            _error = "Marginalia could not reach its library database.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

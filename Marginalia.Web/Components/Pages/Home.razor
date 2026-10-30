@@ -1,0 +1,182 @@
+﻿@page "/"
+@using System.Data.Common
+@using Marginalia.Web.Application
+@using Marginalia.Web.Domain
+@using Marginalia.Web.Components.Shared
+@inject IServiceScopeFactory ScopeFactory
+
+<PageTitle>Inbox · Marginalia</PageTitle>
+
+<section class="page-heading">
+    <div>
+        <h1>Inbox</h1>
+        <p>Review feed arrivals one at a time. Nothing enters your library until you save it.</p>
+    </div>
+    <a class="button button-primary" href="/capture">Capture a URL</a>
+</section>
+
+<div class="inbox-workbench">
+    <section class="register-column" aria-labelledby="inbox-register-heading">
+        <div class="section-heading">
+            <h2 id="inbox-register-heading">Receiving register</h2>
+            @if (!_loading)
+            {
+                <p>@_totalCount item(s) waiting for review</p>
+            }
+        </div>
+
+        @if (_loading && _articles.Count == 0)
+        {
+            <p class="loading-state" role="status">Loading Inbox…</p>
+        }
+        else if (!string.IsNullOrWhiteSpace(_error))
+        {
+            <div class="empty-state" role="alert">
+                <h3>Inbox could not be loaded</h3>
+                <p>@_error</p>
+                <button class="button button-primary" type="button" disabled="@(!IsOnline)" @onclick="LoadInboxAsync">Try again</button>
+            </div>
+        }
+        else if (_articles.Count == 0)
+        {
+            <div class="empty-state">
+                <h3>The register is clear</h3>
+                <p>New feed entries will appear here for individual review. You can also save a link directly.</p>
+                <a class="button button-primary" href="/capture">Capture a URL</a>
+            </div>
+        }
+        else
+        {
+            <div class="docket-register">
+                @foreach (var article in _articles)
+                {
+                    <ArticleDocket Item="article" Feeds="_feeds" OnChanged="LoadInboxAsync" />
+                }
+            </div>
+            @if (_articles.Count < _totalCount)
+            {
+                <button class="button button-outline load-more"
+                        type="button"
+                        disabled="@(!IsOnline || _loading)"
+                        @onclick="LoadMoreAsync">
+                    @(_loading ? "Loading…" : "Load more")
+                </button>
+            }
+        }
+    </section>
+
+    <aside class="health-column" aria-labelledby="feed-health-heading">
+        <div class="section-heading">
+            <h2 id="feed-health-heading">Feed health</h2>
+            <a href="/feeds">Manage feeds</a>
+        </div>
+        @if (_feeds.Length == 0)
+        {
+            <p class="aside-copy">No feeds are subscribed yet.</p>
+            <a class="text-action" href="/feeds">Add a feed</a>
+        }
+        else
+        {
+            <ul class="health-list">
+                @foreach (var feed in _feeds.Where(feed => feed.IsEnabled).Take(5))
+                {
+                    <li>
+                        <span class="health-indicator @HealthClass(feed)" aria-hidden="true"></span>
+                        <span class="health-copy">
+                            <strong>@(string.IsNullOrWhiteSpace(feed.FeedTitle) ? FeedHost(feed.FeedUrl) : feed.FeedTitle)</strong>
+                            <span>@FeedStatus(feed)</span>
+                        </span>
+                    </li>
+                }
+            </ul>
+            @if (_feeds.Count(feed => feed.IsEnabled) > 5)
+            {
+                <a class="text-action" href="/feeds">View all @_feeds.Count(feed => feed.IsEnabled) enabled feeds</a>
+            }
+        }
+        <p class="health-note">Automatic checks run daily while Marginalia is running. Nothing is fetched from private network addresses.</p>
+    </aside>
+</div>
+
+@code {
+    [CascadingParameter]
+    public bool IsOnline { get; set; } = true;
+
+    private readonly List<ArticleListItem> _articles = [];
+    private FeedSubscriptionSummary[] _feeds = [];
+    private long _totalCount;
+    private int _pageNumber = 1;
+    private bool _loading;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => LoadInboxAsync();
+
+    private async Task LoadInboxAsync()
+    {
+        _pageNumber = 1;
+        _articles.Clear();
+        await LoadPageAsync(append: false);
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        if (_loading || _articles.Count >= _totalCount)
+        {
+            return;
+        }
+
+        _pageNumber++;
+        await LoadPageAsync(append: true);
+    }
+
+    private async Task LoadPageAsync(bool append)
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var query = scope.ServiceProvider.GetRequiredService<LibraryQueryService>();
+            var feeds = scope.ServiceProvider.GetRequiredService<FeedSubscriptionService>();
+            var page = await query.SearchAsync(new ArticleSearchRequest(
+                State: ArticleState.Inbox,
+                PageNumber: _pageNumber,
+                PageSize: 30));
+            _feeds = await feeds.ListAsync();
+            _totalCount = page.TotalCount;
+            if (append)
+            {
+                _articles.AddRange(page.Items);
+            }
+            else
+            {
+                _articles.AddRange(page.Items);
+            }
+        }
+        catch (DbException)
+        {
+            _error = "Marginalia could not reach its library database. Your saved data has not been changed.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string FeedHost(string feedUrl) =>
+        Uri.TryCreate(feedUrl, UriKind.Absolute, out var uri) ? uri.Host : "RSS feed";
+
+    private static string FeedStatus(FeedSubscriptionSummary feed) =>
+        feed.LastError is not null
+            ? feed.LastError
+            : feed.LastSuccessUtc is { } success
+                ? $"Last checked {success.ToLocalTime():g}"
+                : "Waiting for first check";
+
+    private static string HealthClass(FeedSubscriptionSummary feed) =>
+        feed.LastError is not null
+            ? "health-warning"
+            : feed.LastAttemptUtc is null
+                ? "health-pending"
+                : "health-good";
+}

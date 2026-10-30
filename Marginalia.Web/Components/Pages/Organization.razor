@@ -1,0 +1,115 @@
+﻿@page "/organization"
+@using System.Data.Common
+@using Marginalia.Web.Application
+@inject IServiceScopeFactory ScopeFactory
+
+<PageTitle>Organization · Marginalia</PageTitle>
+
+<section class="page-heading">
+    <div>
+        <h1>Organization</h1>
+        <p>Collections and tags are optional. Add or change them while editing an individual saved article.</p>
+    </div>
+    <a class="button button-primary" href="/library">Open saved library</a>
+</section>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="empty-state" role="alert">
+        <h2>Organization could not be loaded</h2>
+        <p>@_error</p>
+        <button class="button button-primary" type="button" disabled="@(!IsOnline)" @onclick="LoadAsync">Try again</button>
+    </div>
+}
+else if (_loading)
+{
+    <p class="loading-state" role="status">Loading collections and tags…</p>
+}
+else
+{
+    <div class="organization-register">
+        <section class="organization-section" aria-labelledby="collections-heading">
+            <div class="section-heading">
+                <h2 id="collections-heading">Collections</h2>
+                <p>@_options.Collections.Count collection(s)</p>
+            </div>
+            @if (_options.Collections.Count == 0)
+            {
+                <p class="empty-copy">No collections yet. Create one from the organization editor on any saved article.</p>
+            }
+            else
+            {
+                <ul class="organization-list">
+                    @foreach (var collection in _options.Collections)
+                    {
+                        <li>
+                            <span class="collection-mark">@collection.Name</span>
+                            <a href="@($"/library?collectionId={collection.Id}")" aria-label="@($"Find saved links in {collection.Name}")">
+                                View saved links
+                            </a>
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+
+        <section class="organization-section" aria-labelledby="tags-heading">
+            <div class="section-heading">
+                <h2 id="tags-heading">Tags</h2>
+                <p>@_options.Tags.Count tag(s)</p>
+            </div>
+            @if (_options.Tags.Count == 0)
+            {
+                <p class="empty-copy">No tags yet. Add tags while editing a saved article; spelling is preserved from the first use.</p>
+            }
+            else
+            {
+                <ul class="tag-register">
+                    @foreach (var tag in _options.Tags)
+                    {
+                        <li>
+                            <span class="tag-mark">@tag</span>
+                            <a href="@($"/library?tagName={Uri.EscapeDataString(tag)}")" aria-label="@($"Find saved links tagged {tag}")">
+                                View saved links
+                            </a>
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+    </div>
+}
+
+<p class="field-help">Names are managed on saved articles. Removing a name from an article removes that membership, not the article itself.</p>
+
+@code {
+    [CascadingParameter]
+    public bool IsOnline { get; set; } = true;
+
+    private OrganizationOptions _options = new([], []);
+    private bool _loading = true;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            _options = await scope.ServiceProvider
+                .GetRequiredService<LibraryQueryService>()
+                .GetOrganizationOptionsAsync();
+        }
+        catch (DbException)
+        {
+            _error = "Marginalia could not reach its library database.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

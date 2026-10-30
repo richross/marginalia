@@ -1,0 +1,197 @@
+﻿@page "/library"
+@using System.Data.Common
+@using Marginalia.Web.Application
+@using Marginalia.Web.Domain
+@using Marginalia.Web.Components.Shared
+@inject IServiceScopeFactory ScopeFactory
+
+<PageTitle>Saved library · Marginalia</PageTitle>
+
+<section class="page-heading">
+    <div>
+        <h1>Saved library</h1>
+        <p>Find and organize saved links. Opening an original page never changes its read state.</p>
+    </div>
+    <a class="button button-primary" href="/capture">Capture a URL</a>
+</section>
+
+<form class="filter-register" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+    <div class="filter-main">
+        <label for="library-query">Search saved links</label>
+        <input id="library-query"
+               type="search"
+               @bind="_query"
+               @bind:event="oninput"
+               placeholder="Title, description, URL, notes, tags, or collection"
+               disabled="@(!IsOnline || _loading)" />
+    </div>
+    <div class="filter-field">
+        <label for="library-collection">Collection</label>
+        <select id="library-collection" @bind="_collectionFilter" disabled="@(!IsOnline || _loading)">
+            <option value="">All collections</option>
+            @foreach (var collection in _organization.Collections)
+            {
+                <option value="@collection.Id">@collection.Name</option>
+            }
+        </select>
+    </div>
+    <div class="filter-field">
+        <label for="library-tag">Tag</label>
+        <select id="library-tag" @bind="_tagFilter" disabled="@(!IsOnline || _loading)">
+            <option value="">All tags</option>
+            @foreach (var tag in _organization.Tags)
+            {
+                <option value="@tag">@tag</option>
+            }
+        </select>
+    </div>
+    <div class="filter-field">
+        <label for="library-read-state">Read state</label>
+        <select id="library-read-state" @bind="_readFilter" disabled="@(!IsOnline || _loading)">
+            <option value="">Any</option>
+            <option value="unread">Unread</option>
+            <option value="read">Read</option>
+        </select>
+    </div>
+    <label class="favorite-filter">
+        <input type="checkbox" @bind="_favoritesOnly" disabled="@(!IsOnline || _loading)" />
+        <span>Favorites only</span>
+    </label>
+    <button class="button button-primary" type="submit" disabled="@(!IsOnline || _loading)">Search</button>
+</form>
+
+<section class="register-column library-register" aria-labelledby="library-register-heading">
+    <div class="section-heading">
+        <h2 id="library-register-heading">Library register</h2>
+        @if (!_loading)
+        {
+            <p>@_totalCount matching link(s)</p>
+        }
+    </div>
+
+    @if (_loading && _articles.Count == 0)
+    {
+        <p class="loading-state" role="status">Searching the library…</p>
+    }
+    else if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <div class="empty-state" role="alert">
+            <h3>Search could not be completed</h3>
+            <p>@_error</p>
+            <button class="button button-primary" type="button" disabled="@(!IsOnline)" @onclick="SearchAsync">Try again</button>
+        </div>
+    }
+    else if (_articles.Count == 0)
+    {
+        <div class="empty-state">
+            <h3>No saved links match</h3>
+            <p>Try a different search or filter. Inbox items are reviewed separately.</p>
+        </div>
+    }
+    else
+    {
+        <div class="docket-register">
+            @foreach (var article in _articles)
+            {
+                <ArticleDocket Item="article" Feeds="_feeds" OnChanged="SearchAsync" />
+            }
+        </div>
+        @if (_articles.Count < _totalCount)
+        {
+            <button class="button button-outline load-more"
+                    type="button"
+                    disabled="@(!IsOnline || _loading)"
+                    @onclick="LoadMoreAsync">
+                @(_loading ? "Loading…" : "Load more")
+            </button>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, SupplyParameterFromQuery(Name = "collectionId")]
+    public Guid? CollectionId { get; set; }
+
+    [Parameter, SupplyParameterFromQuery(Name = "tagName")]
+    public string? TagName { get; set; }
+
+    [CascadingParameter]
+    public bool IsOnline { get; set; } = true;
+
+    private readonly List<ArticleListItem> _articles = [];
+    private FeedSubscriptionSummary[] _feeds = [];
+    private OrganizationOptions _organization = new([], []);
+    private string _query = string.Empty;
+    private string _collectionFilter = string.Empty;
+    private string _tagFilter = string.Empty;
+    private string _readFilter = string.Empty;
+    private bool _favoritesOnly;
+    private long _totalCount;
+    private int _pageNumber = 1;
+    private bool _loading;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _collectionFilter = CollectionId?.ToString() ?? string.Empty;
+        _tagFilter = TagName ?? string.Empty;
+        await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _pageNumber = 1;
+        _articles.Clear();
+        await LoadPageAsync();
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        if (_loading || _articles.Count >= _totalCount)
+        {
+            return;
+        }
+
+        _pageNumber++;
+        await LoadPageAsync();
+    }
+
+    private async Task LoadPageAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var query = scope.ServiceProvider.GetRequiredService<LibraryQueryService>();
+            var feeds = scope.ServiceProvider.GetRequiredService<FeedSubscriptionService>();
+            _organization = await query.GetOrganizationOptionsAsync();
+            _feeds = await feeds.ListAsync();
+            var request = new ArticleSearchRequest(
+                Query: _query,
+                State: ArticleState.Saved,
+                CollectionId: Guid.TryParse(_collectionFilter, out var collectionId) ? collectionId : null,
+                TagName: _tagFilter,
+                IsRead: _readFilter switch
+                {
+                    "read" => true,
+                    "unread" => false,
+                    _ => null
+                },
+                IsFavorite: _favoritesOnly ? true : null,
+                PageNumber: _pageNumber,
+                PageSize: 30);
+            var page = await query.SearchAsync(request);
+            _articles.AddRange(page.Items);
+            _totalCount = page.TotalCount;
+        }
+        catch (DbException)
+        {
+            _error = "Marginalia could not reach its library database. Your saved data has not been changed.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

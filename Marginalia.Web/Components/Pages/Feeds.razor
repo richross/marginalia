@@ -1,0 +1,308 @@
+﻿@page "/feeds"
+@using System.Data.Common
+@using Marginalia.Web.Application
+@using Marginalia.Web.Components.Shared
+@using Microsoft.EntityFrameworkCore
+@inject IServiceScopeFactory ScopeFactory
+
+<PageTitle>Feeds · Marginalia</PageTitle>
+
+<section class="page-heading">
+    <div>
+        <h1>Feeds</h1>
+        <p>Each subscription is checked daily while Marginalia is running. Feed entries arrive in the Inbox for review.</p>
+    </div>
+</section>
+
+<section class="feed-add-register" aria-labelledby="add-feed-heading">
+    <h2 id="add-feed-heading">Add an individual feed</h2>
+    <form class="feed-add-form" @onsubmit="AddFeedAsync" @onsubmit:preventDefault>
+        <label for="feed-url">RSS or Atom feed URL</label>
+        <input id="feed-url"
+               type="url"
+               inputmode="url"
+               autocomplete="url"
+               required
+               @bind="_feedUrl"
+               @bind:event="oninput"
+               disabled="@(!IsOnline || _busy)" />
+        <button class="button button-primary" type="submit" disabled="@(!IsOnline || _busy || string.IsNullOrWhiteSpace(_feedUrl))">
+            Add feed
+        </button>
+    </form>
+    <p class="field-help">Only public HTTP(S) addresses are fetched. The first check imports up to 20 recent entries; no site history is crawled.</p>
+</section>
+
+@if (!string.IsNullOrWhiteSpace(_error))
+{
+    <p class="action-message action-error" role="alert">@_error</p>
+}
+@if (!string.IsNullOrWhiteSpace(_notice))
+{
+    <p class="action-message" role="status">@_notice</p>
+}
+
+<section class="feed-register" aria-labelledby="feed-register-heading">
+    <div class="section-heading">
+        <h2 id="feed-register-heading">Subscription register</h2>
+        @if (!_loading)
+        {
+            <p>@_feeds.Length feed(s)</p>
+        }
+    </div>
+
+    @if (_loading && _feeds.Length == 0)
+    {
+        <p class="loading-state" role="status">Loading feed status…</p>
+    }
+    else if (!string.IsNullOrWhiteSpace(_loadError))
+    {
+        <div class="empty-state" role="alert">
+            <h3>Feed status could not be loaded</h3>
+            <p>@_loadError</p>
+            <button class="button button-primary" type="button" disabled="@(!IsOnline)" @onclick="LoadFeedsAsync">Try again</button>
+        </div>
+    }
+    else if (_feeds.Length == 0)
+    {
+        <div class="empty-state">
+            <h3>No feed subscriptions</h3>
+            <p>Add individual RSS or Atom URLs above. They will be checked while the app is running.</p>
+        </div>
+    }
+    else
+    {
+        <div class="feed-rows">
+            @foreach (var feed in _feeds)
+            {
+                <article class="feed-row" @key="feed.Id">
+                    <div class="feed-row-heading">
+                        <span class="health-indicator @HealthClass(feed)" aria-hidden="true"></span>
+                        <div>
+                            <h3>@(string.IsNullOrWhiteSpace(feed.FeedTitle) ? FeedHost(feed.FeedUrl) : feed.FeedTitle)</h3>
+                            <span class="feed-url">@DisplayFeedAddress(feed.FeedUrl)</span>
+                        </div>
+                        <span class="feed-state @(feed.IsEnabled ? "feed-enabled" : "feed-disabled")">
+                            @(feed.IsEnabled ? "Enabled" : "Disabled")
+                        </span>
+                    </div>
+                    <dl class="feed-health-details">
+                        <div>
+                            <dt>Last attempt</dt>
+                            <dd>@FormatDate(feed.LastAttemptUtc)</dd>
+                        </div>
+                        <div>
+                            <dt>Last success</dt>
+                            <dd>@FormatDate(feed.LastSuccessUtc)</dd>
+                        </div>
+                        <div>
+                            <dt>Next check</dt>
+                            <dd>@FormatDate(feed.NextDueUtc)</dd>
+                        </div>
+                    </dl>
+                    @if (feed.LastError is not null)
+                    {
+                        <p class="feed-error" role="status">@feed.LastError</p>
+                    }
+                    <div class="docket-actions">
+                        @if (feed.IsEnabled)
+                        {
+                            <button class="button button-primary"
+                                    type="button"
+                                    disabled="@(!IsOnline || _busy || _busyFeedId == feed.Id)"
+                                    @onclick="() => RefreshFeedAsync(feed.Id)">
+                                @(_busyFeedId == feed.Id ? "Checking…" : "Refresh now")
+                            </button>
+                            <button class="button button-quiet"
+                                    type="button"
+                                    disabled="@(!IsOnline || _busy)"
+                                    @onclick="() => DisableFeedAsync(feed.Id)">
+                                Disable feed
+                            </button>
+                        }
+                        else
+                        {
+                            <button class="button button-primary"
+                                    type="button"
+                                    disabled="@(!IsOnline || _busy)"
+                                    @onclick="() => EnableFeedAsync(feed.Id)">
+                                Re-enable feed
+                            </button>
+                        }
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    [CascadingParameter]
+    public bool IsOnline { get; set; } = true;
+
+    private FeedSubscriptionSummary[] _feeds = [];
+    private string _feedUrl = string.Empty;
+    private Guid? _busyFeedId;
+    private bool _busy;
+    private bool _loading;
+    private string? _error;
+    private string? _loadError;
+    private string? _notice;
+
+    protected override Task OnInitializedAsync() => LoadFeedsAsync();
+
+    private async Task LoadFeedsAsync()
+    {
+        _loading = true;
+        _loadError = null;
+        try
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            _feeds = await scope.ServiceProvider
+                .GetRequiredService<FeedSubscriptionService>()
+                .ListAsync();
+        }
+        catch (DbException)
+        {
+            _loadError = "Marginalia could not reach its library database.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task AddFeedAsync()
+    {
+        if (!IsOnline || _busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        _notice = null;
+        try
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<FeedSubscriptionService>().AddAsync(_feedUrl);
+            _feedUrl = string.Empty;
+            _notice = "Feed added. Its first check is scheduled now; discovered entries will appear in the Inbox.";
+            await LoadFeedsAsync();
+        }
+        catch (ArgumentException)
+        {
+            _error = "Enter an allowed public HTTP or HTTPS feed URL on the standard web port.";
+        }
+        catch (InvalidOperationException)
+        {
+            _error = "That feed is already subscribed or could not be added.";
+        }
+        catch (DbUpdateException)
+        {
+            _error = "Marginalia could not save the feed subscription.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task RefreshFeedAsync(Guid feedId) =>
+        RunFeedCommandAsync(feedId, async (subscription, polling) =>
+        {
+            var result = await polling.RefreshAsync(feedId);
+            if (result.Succeeded)
+            {
+                _notice = result.NotModified
+                    ? "The feed has not changed."
+                    : $"Feed checked. {result.NewInboxArticles} new item(s) entered the Inbox.";
+            }
+            else
+            {
+                _error = result.Error ?? "The feed could not be refreshed.";
+            }
+        });
+
+    private Task DisableFeedAsync(Guid feedId) =>
+        RunFeedCommandAsync(feedId, async (subscription, _) =>
+        {
+            await subscription.DisableAsync(feedId);
+            _notice = "Feed disabled. Its historical source occurrences are retained.";
+        });
+
+    private Task EnableFeedAsync(Guid feedId) =>
+        RunFeedCommandAsync(feedId, async (subscription, _) =>
+        {
+            await subscription.EnableAsync(feedId);
+            _notice = "Feed re-enabled and scheduled for an immediate check.";
+        });
+
+    private async Task RunFeedCommandAsync(
+        Guid feedId,
+        Func<FeedSubscriptionService, FeedPollingService, Task> action)
+    {
+        if (!IsOnline || _busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _busyFeedId = feedId;
+        _error = null;
+        _notice = null;
+        try
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var subscriptions = scope.ServiceProvider.GetRequiredService<FeedSubscriptionService>();
+            var polling = scope.ServiceProvider.GetRequiredService<FeedPollingService>();
+            await action(subscriptions, polling);
+            await LoadFeedsAsync();
+        }
+        catch (KeyNotFoundException)
+        {
+            _error = "The feed subscription is no longer available.";
+        }
+        catch (ArgumentException)
+        {
+            _error = "The feed action could not be completed.";
+        }
+        catch (InvalidOperationException)
+        {
+            _error = "The feed changed before the action completed. Refresh the list.";
+        }
+        catch (DbUpdateException)
+        {
+            _error = "Marginalia could not save the feed change.";
+        }
+        finally
+        {
+            _busy = false;
+            _busyFeedId = null;
+        }
+    }
+
+    private static string FeedHost(string feedUrl) =>
+        Uri.TryCreate(feedUrl, UriKind.Absolute, out var uri) ? uri.Host : "RSS feed";
+
+    private static string DisplayFeedAddress(string feedUrl)
+    {
+        if (!Uri.TryCreate(feedUrl, UriKind.Absolute, out var uri))
+        {
+            return "RSS feed address unavailable";
+        }
+
+        var address = $"{uri.GetLeftPart(UriPartial.Authority)}{uri.AbsolutePath}";
+        return string.IsNullOrEmpty(uri.Query) ? address : $"{address}?[parameters hidden]";
+    }
+
+    private static string HealthClass(FeedSubscriptionSummary feed) =>
+        feed.LastError is not null
+            ? "health-warning"
+            : feed.LastAttemptUtc is null
+                ? "health-pending"
+                : "health-good";
+
+    private static string FormatDate(DateTimeOffset? value) =>
+        value?.ToLocalTime().ToString("g") ?? "Not yet";
+}

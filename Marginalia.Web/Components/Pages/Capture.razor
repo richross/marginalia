@@ -1,0 +1,252 @@
+﻿@page "/capture"
+@using Marginalia.Web.Application
+@using Marginalia.Web.Components.Shared
+@using Microsoft.EntityFrameworkCore
+@inject IServiceScopeFactory ScopeFactory
+
+<PageTitle>Capture a URL · Marginalia</PageTitle>
+
+<section class="page-heading">
+    <div>
+        <h1>Capture a URL</h1>
+        <p>Paste a public web address to save it directly as unread. The original page is not archived.</p>
+    </div>
+</section>
+
+<section class="capture-register">
+    <form class="capture-form" @onsubmit="SubmitAsync" @onsubmit:preventDefault>
+        <label for="capture-url">URL</label>
+        <input id="capture-url"
+               type="url"
+               inputmode="url"
+               autocomplete="url"
+               required
+               @bind="_url"
+               @bind:event="oninput"
+               disabled="@(!IsOnline || _busy)" />
+        <p class="field-help">Only public HTTP and HTTPS destinations are allowed. Private network addresses are blocked.</p>
+
+        <label for="capture-title">Title <span class="optional-note">Optional when page metadata supplies one</span></label>
+        <input id="capture-title"
+               @bind="_title"
+               @bind:event="oninput"
+               autocomplete="off"
+               disabled="@(!IsOnline || _busy)" />
+
+        <label for="capture-description">Description <span class="optional-note">Optional</span></label>
+        <textarea id="capture-description"
+                  rows="4"
+                  @bind="_description"
+                  @bind:event="oninput"
+                  disabled="@(!IsOnline || _busy)"></textarea>
+
+        <button class="button button-primary" type="submit" disabled="@(!IsOnline || _busy || string.IsNullOrWhiteSpace(_url))">
+            @(_busy ? "Checking metadata…" : "Save unread")
+        </button>
+    </form>
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <p class="action-message action-error" role="alert">@_error</p>
+    }
+    @if (!string.IsNullOrWhiteSpace(_notice))
+    {
+        <p class="action-message" role="status">@_notice</p>
+    }
+
+    @if (_result?.Capture.Outcome == ManualCaptureOutcome.TitleRequired)
+    {
+        <div class="decision-register" role="status">
+            <h2>A title is needed</h2>
+            @if (_result.MetadataFailure is { } failure)
+            {
+                <p>@FailureMessage(failure)</p>
+            }
+            <p>Enter a title above and save again. No article has been saved yet.</p>
+        </div>
+    }
+    else if (_result?.Capture.Outcome == ManualCaptureOutcome.AlreadyPresent)
+    {
+        <div class="decision-register" role="status">
+            <h2>Already in your library</h2>
+            <p>This link already has an active Inbox or Saved entry. No duplicate was created.</p>
+            <a class="button button-outline" href="/">Open Inbox</a>
+            <a class="button button-outline" href="/library">Open saved library</a>
+        </div>
+    }
+    else if (_result?.Capture.Outcome == ManualCaptureOutcome.RecoveryDecisionRequired
+             && _result.Capture.ExistingArticle is { } retained)
+    {
+        <div class="decision-register" role="group" aria-labelledby="recovery-match-heading">
+            <h2 id="recovery-match-heading">This link was previously reviewed</h2>
+            <p><strong>@retained.Article.Title</strong></p>
+            @if (!string.IsNullOrWhiteSpace(retained.Article.Description))
+            {
+                <p>@retained.Article.Description</p>
+            }
+            <p>Its prior notes and organization will be preserved. Restore makes it unread and Saved.</p>
+            <div class="docket-actions">
+                <button class="button button-primary" type="button" disabled="@(!IsOnline || _busy)" @onclick="RestoreMatchAsync">
+                    Restore as unread Saved
+                </button>
+                <button class="button button-quiet" type="button" disabled="@_busy" @onclick="CancelDecision">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    }
+    else if (_result?.Capture.Outcome == ManualCaptureOutcome.PurgedIdentityConfirmationRequired)
+    {
+        <div class="decision-register decision-warning" role="group" aria-labelledby="purged-match-heading">
+            <h2 id="purged-match-heading">A prior entry expired</h2>
+            <p>Its metadata and source history were purged. Only a minimal duplicate-suppression identity remains.</p>
+            <div class="docket-actions">
+                <button class="button button-primary" type="button" disabled="@(!IsOnline || _busy)" @onclick="ConfirmFreshCaptureAsync">
+                    Create a fresh Saved entry
+                </button>
+                <button class="button button-quiet" type="button" disabled="@_busy" @onclick="CancelDecision">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    [CascadingParameter]
+    public bool IsOnline { get; set; } = true;
+
+    private string _url = string.Empty;
+    private string _title = string.Empty;
+    private string _description = string.Empty;
+    private string? _requestUrl;
+    private Guid _requestId = Guid.NewGuid();
+    private bool _confirmPurgedIdentity;
+    private bool _busy;
+    private string? _error;
+    private string? _notice;
+    private ManualUrlCaptureResult? _result;
+
+    private async Task SubmitAsync()
+    {
+        if (!IsOnline || _busy)
+        {
+            return;
+        }
+
+        if (!string.Equals(_requestUrl, _url, StringComparison.Ordinal))
+        {
+            _requestId = Guid.NewGuid();
+            _requestUrl = _url;
+            _confirmPurgedIdentity = false;
+        }
+
+        _busy = true;
+        _error = null;
+        _notice = null;
+        _result = null;
+        try
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var capture = scope.ServiceProvider.GetRequiredService<ManualUrlCaptureService>();
+            _result = await capture.CaptureAsync(
+                _url,
+                _title,
+                _description,
+                _requestId,
+                _confirmPurgedIdentity);
+
+            switch (_result.Capture.Outcome)
+            {
+                case ManualCaptureOutcome.Created:
+                    _notice = "Saved as unread. Opening the original page will not mark it read.";
+                    _url = string.Empty;
+                    _title = string.Empty;
+                    _description = string.Empty;
+                    _requestUrl = null;
+                    _requestId = Guid.NewGuid();
+                    _confirmPurgedIdentity = false;
+                    break;
+                case ManualCaptureOutcome.AlreadyPresent:
+                case ManualCaptureOutcome.RecoveryDecisionRequired:
+                case ManualCaptureOutcome.PurgedIdentityConfirmationRequired:
+                    break;
+                case ManualCaptureOutcome.TitleRequired:
+                    _title = _result.Metadata?.Title ?? _title;
+                    _description = _result.Metadata?.Description ?? _description;
+                    break;
+            }
+        }
+        catch (ArgumentException)
+        {
+            _error = "Enter a valid public HTTP or HTTPS URL and try again.";
+        }
+        catch (InvalidOperationException)
+        {
+            _error = "Marginalia could not complete this capture. Check the URL and try again.";
+        }
+        catch (DbUpdateException)
+        {
+            _error = "Marginalia could not save the capture. Your existing library data was not replaced.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RestoreMatchAsync()
+    {
+        if (!IsOnline || _busy || _result?.Capture.ExistingArticle is not { } retained)
+        {
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var commands = scope.ServiceProvider.GetRequiredService<LibraryCommandService>();
+            await commands.RestoreManualCaptureMatchAsync(retained.Article.Id, _requestId);
+            _notice = "Restored as unread Saved. Prior notes, tags, collections, and source history were preserved.";
+            _result = null;
+        }
+        catch (ArgumentException)
+        {
+            _error = "The recovery request could not be completed. Try again.";
+        }
+        catch (InvalidOperationException)
+        {
+            _error = "The article changed or its recovery period expired. Refresh and try again.";
+        }
+        catch (KeyNotFoundException)
+        {
+            _error = "The prior article is no longer available.";
+        }
+        catch (DbUpdateException)
+        {
+            _error = "Marginalia could not save the recovery. No existing article metadata was replaced.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ConfirmFreshCaptureAsync()
+    {
+        _confirmPurgedIdentity = true;
+        await SubmitAsync();
+    }
+
+    private void CancelDecision()
+    {
+        _result = null;
+        _confirmPurgedIdentity = false;
+        _notice = "No change was made.";
+    }
+
+    private static string FailureMessage(SafeHttpFetchFailure failure) =>
+        new SafeHttpFetchException(failure).Message;
+}

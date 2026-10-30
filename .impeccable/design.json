@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-30T10:16:53-04:00",
+  "title": "Design System: Marginalia",
+  "extensions": {
+    "colorMeta": {
+      "ink": { "role": "neutral", "displayName": "Ink" },
+      "ink-soft": { "role": "neutral", "displayName": "Soft Ink" },
+      "cobalt": { "role": "primary", "displayName": "Cobalt" },
+      "cobalt-dark": { "role": "primary", "displayName": "Dark Cobalt" },
+      "cobalt-light": { "role": "primary", "displayName": "Light Cobalt" },
+      "signal-gold": { "role": "secondary", "displayName": "Signal-Gold" },
+      "signal-dark": { "role": "secondary", "displayName": "Dark Signal" },
+      "chalk": { "role": "neutral", "displayName": "Chalk" },
+      "paper": { "role": "neutral", "displayName": "Paper" },
+      "rule": { "role": "neutral", "displayName": "Rule" },
+      "rule-dark": { "role": "neutral", "displayName": "Dark Rule" },
+      "error": { "role": "tertiary", "displayName": "Error" },
+      "error-paper": { "role": "tertiary", "displayName": "Error Paper" },
+      "good": { "role": "tertiary", "displayName": "Good" },
+      "pending": { "role": "tertiary", "displayName": "Pending" },
+      "focus": { "role": "secondary", "displayName": "Focus Gold" }
+    },
+    "typographyMeta": {
+      "body": { "displayName": "Body", "purpose": "General copy and form content." },
+      "page-title": { "displayName": "Page Title", "purpose": "Page headings." },
+      "section-title": { "displayName": "Section Title", "purpose": "Register and panel headings." },
+      "control": { "displayName": "Control", "purpose": "Button text." },
+      "field-label": { "displayName": "Field Label", "purpose": "Visible form labels." }
+    },
+    "shadows": [
+      {
+        "name": "active-nav-marker",
+        "value": "inset 3px 0 0 var(--signal)",
+        "purpose": "Marks the active desktop navigation item; the narrow layout uses an inset bottom marker."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-state",
+        "value": "background-color 120ms ease-out, color 120ms ease-out, border-color 120ms ease-out",
+        "purpose": "Button hover state transitions; reduced-motion mode minimizes transition duration."
+      }
+    ],
+    "breakpoints": [
+      { "name": "register-stack", "value": "820px" },
+      { "name": "compact-controls", "value": "620px" },
+      { "name": "filter-layout", "value": "1050px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Cobalt action used for the primary form or item decision.",
+      "html": "<button class=\"ds-button-primary\" type=\"button\">Save to library</button>",
+      "css": ".ds-button-primary { min-height: 2.7rem; padding: 0.55rem 0.9rem; border: 1px solid var(--cobalt); border-radius: 0; color: white; background: var(--cobalt); font: inherit; font-weight: 680; line-height: 1.2; cursor: pointer; transition: background-color 120ms ease-out, color 120ms ease-out, border-color 120ms ease-out; } .ds-button-primary:hover:not(:disabled) { color: white; background: var(--cobalt-dark); border-color: var(--cobalt-dark); } .ds-button-primary:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; } .ds-button-primary:disabled { opacity: 0.55; cursor: not-allowed; }"
+    },
+    {
+      "name": "Quiet Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Secondary item action without a filled resting surface.",
+      "html": "<button class=\"ds-button-quiet\" type=\"button\">Dismiss</button>",
+      "css": ".ds-button-quiet { min-height: 2.7rem; padding: 0.55rem 0.9rem; border: 1px solid var(--rule-dark); border-radius: 0; color: var(--ink); background: transparent; font: inherit; font-weight: 680; line-height: 1.2; cursor: pointer; transition: background-color 120ms ease-out, color 120ms ease-out, border-color 120ms ease-out; } .ds-button-quiet:hover:not(:disabled) { color: var(--cobalt-dark); background: var(--cobalt-light); } .ds-button-quiet:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; } .ds-button-quiet:disabled { opacity: 0.55; cursor: not-allowed; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "description": "Square, labeled field used for URL capture, search, and metadata.",
+      "html": "<label class=\"ds-field-label\" for=\"ds-url\">URL</label><input class=\"ds-field\" id=\"ds-url\" type=\"url\">",
+      "css": ".ds-field-label { display: block; margin-bottom: 0.3rem; color: var(--ink); font: inherit; font-size: 0.86rem; font-weight: 700; } .ds-field { width: 100%; min-height: 2.75rem; padding: 0.55rem 0.65rem; border: 1px solid var(--rule-dark); border-radius: 0; color: var(--ink); background: var(--paper); font: inherit; } .ds-field:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }"
+    },
+    {
+      "name": "Docket Slip",
+      "kind": "custom",
+      "description": "Ruled link record with source/date context and explicit state actions.",
+      "html": "<article class=\"ds-docket\"><div class=\"ds-docket-rule\" aria-hidden=\"true\"></div><div class=\"ds-docket-body\"><div class=\"ds-source-label\">RSS feed</div><time>2026-10-30</time><h2><a href=\"#\">Article title</a></h2><a href=\"#\">Open original ↗</a></div></article>",
+      "css": ".ds-docket { border-top: 1px solid var(--rule-dark); border-bottom: 1px solid var(--rule); background: rgb(255 254 249 / 82%); } .ds-docket-rule { width: 2.7rem; height: 0.22rem; background: var(--signal); } .ds-docket-body { padding: 0.95rem 1rem 1.05rem; } .ds-source-label { display: inline-flex; align-items: center; min-height: 1.45rem; padding: 0.12rem 0.42rem; color: white; background: var(--cobalt); font-size: 0.75rem; font-weight: 720; } .ds-docket h2 { margin: 0.55rem 0; color: var(--ink); font-size: clamp(1.16rem, 1.6vw, 1.48rem); } .ds-docket h2 a { color: var(--ink); text-decoration: none; } .ds-docket h2 a:hover { color: var(--cobalt); text-decoration: underline; } .ds-docket a:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }"
+    },
+    {
+      "name": "Active Navigation Item",
+      "kind": "nav",
+      "description": "Cobalt-rail item with a signal-gold inset active marker.",
+      "html": "<a class=\"ds-nav-link ds-nav-active\" href=\"#\"><span>Inbox</span></a>",
+      "css": ".ds-nav-link { display: flex; align-items: center; min-height: 2.85rem; padding: 0.55rem 0.7rem; border-bottom: 1px solid rgb(255 255 255 / 13%); color: #dbe5e8; text-decoration: none; } .ds-nav-link:hover { color: white; background: rgb(255 255 255 / 8%); } .ds-nav-active { color: white; background: #245c80; box-shadow: inset 3px 0 0 var(--signal); } .ds-nav-link:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }"
+    },
+    {
+      "name": "Organization Mark",
+      "kind": "chip",
+      "description": "Square collection or tag label attached to a saved link.",
+      "html": "<span class=\"ds-tag-mark\">Research</span>",
+      "css": ".ds-tag-mark { display: inline-flex; align-items: center; min-height: 1.65rem; padding: 0.14rem 0.48rem; color: var(--cobalt-dark); background: var(--cobalt-light); font-size: 0.82rem; font-weight: 650; } .ds-tag-mark.ds-collection-mark { color: var(--ink); background: #e9c45b; }"
+    },
+    {
+      "name": "Feed Health Indicator",
+      "kind": "custom",
+      "description": "Outlined circle communicates feed status alongside status text.",
+      "html": "<span class=\"ds-health-indicator ds-health-good\" aria-hidden=\"true\"></span><span>Last checked successfully</span>",
+      "css": ".ds-health-indicator { display: inline-block; width: 0.7rem; height: 0.7rem; border: 2px solid currentColor; border-radius: 50%; } .ds-health-good { color: var(--good); background: var(--good); } .ds-health-warning { color: var(--error); background: var(--error); } .ds-health-pending { color: var(--pending); background: transparent; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Source Intake Register",
+    "overview": "Marginalia uses a daylight receiving-register language: a cobalt navigation rail, chalk work surface, ruled docket slips, and signal-gold marks. Source and date stay legible beside each link; Inbox items receive an individual Save or Dismiss decision.\n\nThe register stores link metadata and organization, not article pages or imagery. Keep article language plain and use the original site as the reading destination.",
+    "keyCharacteristics": [
+      "Source and publication date remain explicit on each docket.",
+      "Ruled strips and stamped state marks organize the interface.",
+      "Controls and panels use squared corners."
+    ],
+    "rules": [],
+    "dos": [
+      "Do preserve source identity, date, and individual item actions in docket-based lists.",
+      "Do retain visible keyboard focus, a skip link, labeled fields, and responsive navigation and controls; WCAG 2.2 AA is the confirmed accessibility target, not a claim of audited conformance.",
+      "Do use status text alongside color indicators."
+    ],
+    "donts": [
+      "Don't imply that Marginalia archives article bodies or images; reading stays on the original website.",
+      "Don't turn Inbox review into bulk disposition; the selected direction is one explicit decision per item.",
+      "Don't add unconfirmed logos, imagery, or alternate visual identities."
+    ]
+  }
+}

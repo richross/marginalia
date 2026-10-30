@@ -1,0 +1,136 @@
+﻿@page "/settings"
+@using System.Data.Common
+@using Marginalia.Web.Application
+@using Microsoft.EntityFrameworkCore
+@inject IServiceScopeFactory ScopeFactory
+
+<PageTitle>Settings · Marginalia</PageTitle>
+
+<section class="page-heading">
+    <div>
+        <h1>Settings</h1>
+        <p>Access and data handling for this owner-only library.</p>
+    </div>
+</section>
+
+<section class="settings-register" aria-labelledby="access-heading">
+    <h2 id="access-heading">Owner access</h2>
+    <p>Access is restricted to the configured GitHub account. OAuth credentials and the owner ID are managed outside the app and never displayed here.</p>
+</section>
+
+<section class="settings-register" aria-labelledby="data-heading">
+    <h2 id="data-heading">Library data</h2>
+    <p>Saved records are kept in PostgreSQL. Feed checks pause when Marginalia is stopped or the host is asleep.</p>
+    <p>The app stores link metadata and your organization, not article bodies or images. Opening an original link never changes its read state.</p>
+    <a class="text-action" href="/recovery">Review dismissed items and Trash</a>
+</section>
+
+<section class="settings-register" aria-labelledby="portability-heading">
+    <h2 id="portability-heading">Portability and recovery</h2>
+    <p>Download a versioned JSON copy of Saved links, notes, read/favorite state, tags, collections, and permitted source history. The export excludes credentials, article bodies, and source occurrence keys.</p>
+    <a class="button button-outline" href="/api/library/export.json">Download Saved library JSON</a>
+    <div class="capture-form" aria-labelledby="import-heading">
+        <h3 id="import-heading">Import a Saved library JSON file</h3>
+        <p>Only new Saved identities are imported. Existing Saved, Inbox, Dismissed, Trashed, or tombstoned identities are skipped and reported; existing data is not changed.</p>
+        <label for="library-import-file">Marginalia JSON export</label>
+        <InputFile id="library-import-file"
+                   accept=".json,application/json"
+                   disabled="@(!IsOnline || _importing)"
+                   OnChange="SelectImportFile" />
+        @if (_selectedFile is not null)
+        {
+            <p class="field-help">Selected: @_selectedFile.Name (@(_selectedFile.Size / 1024) KB). Maximum file size: 128 MiB.</p>
+        }
+        <button class="button button-outline"
+                type="button"
+                disabled="@(!IsOnline || _importing || _selectedFile is null)"
+                @onclick="ImportAsync">
+            @(_importing ? "Importing…" : "Import Saved links")
+        </button>
+        @if (_importing)
+        {
+            <p role="status">Validating the complete file before importing.</p>
+        }
+        @if (!string.IsNullOrWhiteSpace(_importError))
+        {
+            <p class="empty-state" role="alert">@_importError</p>
+        }
+        @if (_importResult is not null)
+        {
+            <p role="status">
+                Imported @_importResult.ImportedCount item(s); skipped @_importResult.Conflicts.Count conflict(s).
+            </p>
+            @if (_importResult.Conflicts.Count > 0)
+            {
+                <ul class="import-conflict-list">
+                    @foreach (var conflict in _importResult.Conflicts)
+                    {
+                        <li>Item @conflict.ArticleNumber: @conflict.Reason <code>@conflict.OriginalUrl</code></li>
+                    }
+                </ul>
+            }
+        }
+        <p class="field-help">Imports are validated as a whole; invalid files make no changes. Local PostgreSQL backup and isolated-restore steps are documented in the README.</p>
+    </div>
+</section>
+
+@code {
+    [CascadingParameter]
+    public bool IsOnline { get; set; } = true;
+
+    private IBrowserFile? _selectedFile;
+    private LibraryImportResult? _importResult;
+    private string? _importError;
+    private bool _importing;
+
+    private void SelectImportFile(InputFileChangeEventArgs args)
+    {
+        _selectedFile = args.File;
+        _importResult = null;
+        _importError = null;
+    }
+
+    private async Task ImportAsync()
+    {
+        if (_selectedFile is null)
+        {
+            return;
+        }
+
+        _importing = true;
+        _importResult = null;
+        _importError = null;
+        try
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            await using var stream = _selectedFile.OpenReadStream(LibraryImportService.MaximumImportFileBytes);
+            _importResult = await scope.ServiceProvider
+                .GetRequiredService<LibraryImportService>()
+                .ImportJsonAsync(stream);
+        }
+        catch (LibraryImportValidationException exception)
+        {
+            _importError = exception.Message;
+        }
+        catch (LibraryImportConcurrencyException exception)
+        {
+            _importError = exception.Message;
+        }
+        catch (IOException)
+        {
+            _importError = "The selected file could not be read or exceeds the 128 MiB file limit.";
+        }
+        catch (DbException)
+        {
+            _importError = "The database could not complete the import. Reconnect and inspect the library before retrying.";
+        }
+        catch (DbUpdateException)
+        {
+            _importError = "The database could not complete the import. Inspect the library before retrying.";
+        }
+        finally
+        {
+            _importing = false;
+        }
+    }
+}

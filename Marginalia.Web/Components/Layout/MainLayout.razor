@@ -1,0 +1,46 @@
+﻿@inherits LayoutComponentBase
+
+<!--
+THESIS: Marginalia turns arriving links into explicit, traceable keep-or-dismiss decisions instead of a generic card grid.
+OWN-WORLD: A daylight receiving register in cobalt, signal-gold, chalk, and ink; ruled docket strips and stamped state marks carry the same grammar through navigation and controls.
+STORY: Identify the source, publication date, and link; save selected items to the private library or dismiss them for recovery.
+FIRST VIEWPORT: Inbox navigation anchors the left rail; the central register owns the page, with feed health alongside it and per-item actions always visible.
+FORM: Source Intake Register, grounded candidate three; staging is a receiving register with one disposition per item. Seed f966d59c.
+-->
+<div class="app-frame">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <aside class="nav-rail" aria-label="Marginalia navigation">
+        <a class="brand-mark" href="/" aria-label="Marginalia home">
+            <span class="brand-glyph" aria-hidden="true"></span>
+            <span>Marginalia</span>
+        </a>
+        <NavMenu />
+        <div class="rail-note">
+            <span class="rail-status" aria-hidden="true"></span>
+            <span>Private library</span>
+            <form method="post" action="/account/logout" class="rail-sign-out">
+                <AntiforgeryToken />
+                <button type="submit" class="button button-quiet">Sign out</button>
+            </form>
+        </div>
+    </aside>
+
+    <div class="workspace">
+        <NetworkStatus @bind-IsOnline="_isOnline" />
+        <CascadingValue Value="_isOnline">
+            <main id="main-content" class="main-content">
+                @Body
+            </main>
+        </CascadingValue>
+    </div>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet role="alert">
+    <span>Marginalia could not complete that action.</span>
+    <a href="." class="reload">Reload the page</a>
+    <button class="dismiss" type="button" aria-label="Dismiss error">Dismiss</button>
+</div>
+
+@code {
+    private bool _isOnline = true;
+}

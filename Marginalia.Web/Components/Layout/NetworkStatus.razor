@@ -1,0 +1,65 @@
+﻿@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="network-status" role="status" aria-live="polite" hidden="@IsOnline">
+    <strong>Offline.</strong> Marginalia needs a connection; changes are not queued.
+</div>
+
+@code {
+    [Parameter]
+    public bool IsOnline { get; set; } = true;
+
+    [Parameter]
+    public EventCallback<bool> IsOnlineChanged { get; set; }
+
+    private DotNetObjectReference<NetworkStatus>? _reference;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _reference = DotNetObjectReference.Create(this);
+        var online = await JS.InvokeAsync<bool>("marginaliaNetwork.watch", _reference);
+        if (online != IsOnline)
+        {
+            IsOnline = online;
+            await IsOnlineChanged.InvokeAsync(online);
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public Task UpdateOnlineState(bool online) =>
+        InvokeAsync(async () =>
+        {
+            if (IsOnline == online)
+            {
+                return;
+            }
+
+            IsOnline = online;
+            await IsOnlineChanged.InvokeAsync(online);
+            StateHasChanged();
+        });
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_reference is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("marginaliaNetwork.unwatch", _reference);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+
+        _reference.Dispose();
+    }
+}

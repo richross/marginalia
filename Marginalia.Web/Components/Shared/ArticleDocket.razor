@@ -1,0 +1,337 @@
+﻿@using Marginalia.Web.Application
+@using Marginalia.Web.Domain
+@using Marginalia.Web.Persistence
+@using Microsoft.EntityFrameworkCore
+@inject IServiceScopeFactory ScopeFactory
+
+<article class="docket-slip" @key="Item.Id">
+    <div class="docket-rule" aria-hidden="true"></div>
+    <div class="docket-body">
+        <div class="docket-meta">
+            <span class="source-label">@SourceLabel</span>
+            <time datetime="@DisplayedDate.ToString("O")">@DisplayedDate.ToLocalTime().ToString("d")</time>
+            @if (Item.SourceOccurrences.Count > 1)
+            {
+                <span class="source-count">Also seen in @(Item.SourceOccurrences.Count - 1) other source(s)</span>
+            }
+            @if ((Item.State is ArticleState.Dismissed or ArticleState.Trashed) && Item.PurgeAfterUtc is not null)
+            {
+                <span class="recovery-deadline">Recover until @Item.PurgeAfterUtc.Value.ToLocalTime().ToString("d")</span>
+            }
+        </div>
+
+        <h2 class="docket-title">
+            @if (Item.Title is not null)
+            {
+                <a href="@Item.OriginalUrl" target="_blank" rel="noopener noreferrer">@Item.Title</a>
+            }
+            else
+            {
+                <span>Title needed to save</span>
+            }
+        </h2>
+
+        @if (!string.IsNullOrWhiteSpace(Item.Description))
+        {
+            <p class="docket-description">@Item.Description</p>
+        }
+
+        <a class="original-link" href="@Item.OriginalUrl" target="_blank" rel="noopener noreferrer">
+            Open original <span aria-hidden="true">↗</span>
+        </a>
+
+        @if (Item.Collections.Count > 0 || Item.Tags.Count > 0)
+        {
+            <ul class="organization-marks" aria-label="Article organization">
+                @foreach (var collection in Item.Collections)
+                {
+                    <li class="collection-mark">@collection</li>
+                }
+                @foreach (var tag in Item.Tags)
+                {
+                    <li class="tag-mark">@tag</li>
+                }
+            </ul>
+        }
+
+        @if (Item.State == ArticleState.Inbox)
+        {
+            <div class="docket-actions">
+                @if (string.IsNullOrWhiteSpace(Item.Title))
+                {
+                    <div class="title-required">
+                        <label for="@TitleInputId">Title required to save</label>
+                        <input id="@TitleInputId"
+                               @bind="_title"
+                               @bind:event="oninput"
+                               autocomplete="off"
+                               disabled="@(!IsOnline || _busy)" />
+                    </div>
+                }
+                <button class="button button-primary"
+                        type="button"
+                        disabled="@(!IsOnline || _busy || string.IsNullOrWhiteSpace(Item.Title ?? _title))"
+                        @onclick="SaveFromInboxAsync">
+                    Save to library
+                </button>
+                <button class="button button-quiet"
+                        type="button"
+                        disabled="@(!IsOnline || _busy)"
+                        @onclick="DismissAsync">
+                    Dismiss
+                </button>
+            </div>
+        }
+        else if (Item.State == ArticleState.Saved)
+        {
+            <div class="docket-actions">
+                <button class="button button-quiet"
+                        type="button"
+                        aria-pressed="@Item.IsRead"
+                        disabled="@(!IsOnline || _busy)"
+                        @onclick="ToggleReadAsync">
+                    @(Item.IsRead ? "Mark unread" : "Mark read")
+                </button>
+                <button class="button button-quiet"
+                        type="button"
+                        aria-pressed="@Item.IsFavorite"
+                        disabled="@(!IsOnline || _busy)"
+                        @onclick="ToggleFavoriteAsync">
+                    @(Item.IsFavorite ? "Remove favorite" : "Add favorite")
+                </button>
+                <button class="button button-quiet"
+                        type="button"
+                        disabled="@(!IsOnline || _busy)"
+                        @onclick="MoveToTrashAsync">
+                    Move to trash
+                </button>
+                <details class="record-editor">
+                    <summary>Edit details and organization</summary>
+                    <div class="editor-fields">
+                        <label for="@TitleInputId">Title</label>
+                        <input id="@TitleInputId" @bind="_title" @bind:event="oninput" disabled="@(!IsOnline || _busy)" />
+                        <label for="@DescriptionInputId">Description</label>
+                        <textarea id="@DescriptionInputId" rows="3" @bind="_description" @bind:event="oninput" disabled="@(!IsOnline || _busy)"></textarea>
+                        <label for="@NotesInputId">Notes</label>
+                        <textarea id="@NotesInputId" rows="3" @bind="_notes" @bind:event="oninput" disabled="@(!IsOnline || _busy)"></textarea>
+                        <label for="@CollectionsInputId">Collections</label>
+                        <textarea id="@CollectionsInputId" rows="2" @bind="_collections" @bind:event="oninput" disabled="@(!IsOnline || _busy)"></textarea>
+                        <span class="field-help">One collection per line. Leave empty for no collections.</span>
+                        <label for="@TagsInputId">Tags</label>
+                        <textarea id="@TagsInputId" rows="2" @bind="_tags" @bind:event="oninput" disabled="@(!IsOnline || _busy)"></textarea>
+                        <span class="field-help">One tag per line. Names are trimmed and matched without case sensitivity.</span>
+                        <button class="button button-primary"
+                                type="button"
+                                disabled="@(!IsOnline || _busy)"
+                                @onclick="SaveDetailsAsync">
+                            Save changes
+                        </button>
+                    </div>
+                </details>
+            </div>
+        }
+        else if (Item.State == ArticleState.Dismissed)
+        {
+            <div class="docket-actions">
+                <button class="button button-primary"
+                        type="button"
+                        disabled="@(!IsOnline || _busy)"
+                        @onclick="RestoreDismissedAsync">
+                    Restore to Inbox
+                </button>
+            </div>
+        }
+        else if (Item.State == ArticleState.Trashed)
+        {
+            <div class="docket-actions">
+                <button class="button button-primary"
+                        type="button"
+                        disabled="@(!IsOnline || _busy)"
+                        @onclick="RestoreTrashAsync">
+                    Restore to library
+                </button>
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(_error))
+        {
+            <p class="action-message action-error" role="alert">@_error</p>
+        }
+        @if (!string.IsNullOrWhiteSpace(_notice))
+        {
+            <p class="action-message" role="status">@_notice</p>
+        }
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired]
+    public ArticleListItem Item { get; set; } = null!;
+
+    [Parameter]
+    public IReadOnlyList<FeedSubscriptionSummary> Feeds { get; set; } = [];
+
+    [Parameter]
+    public EventCallback OnChanged { get; set; }
+
+    [CascadingParameter]
+    public bool IsOnline { get; set; } = true;
+
+    private string _title = string.Empty;
+    private string _description = string.Empty;
+    private string _notes = string.Empty;
+    private string _collections = string.Empty;
+    private string _tags = string.Empty;
+    private string? _error;
+    private string? _notice;
+    private bool _busy;
+
+    private DateTimeOffset DisplayedDate => Item.PublishedUtc ?? Item.CreatedUtc;
+    private string TitleInputId => $"article-title-{Item.Id:N}";
+    private string DescriptionInputId => $"article-description-{Item.Id:N}";
+    private string NotesInputId => $"article-notes-{Item.Id:N}";
+    private string CollectionsInputId => $"article-collections-{Item.Id:N}";
+    private string TagsInputId => $"article-tags-{Item.Id:N}";
+
+    private string SourceLabel
+    {
+        get
+        {
+            var source = Item.SourceOccurrences
+                .OrderByDescending(occurrence => occurrence.OccurredUtc)
+                .FirstOrDefault();
+            if (source?.Type != "Feed")
+            {
+                return "Manual capture";
+            }
+
+            var prefix = "feed-";
+            if (source.SourceKey.StartsWith(prefix, StringComparison.Ordinal)
+                && Guid.TryParseExact(source.SourceKey[prefix.Length..], "N", out var feedId))
+            {
+                var feed = Feeds.FirstOrDefault(candidate => candidate.Id == feedId);
+                if (feed is not null)
+                {
+                    return string.IsNullOrWhiteSpace(feed.FeedTitle)
+                        ? new Uri(feed.FeedUrl).Host
+                        : feed.FeedTitle;
+                }
+            }
+
+            return "RSS feed";
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        _title = Item.Title ?? string.Empty;
+        _description = Item.Description ?? string.Empty;
+        _notes = Item.Notes ?? string.Empty;
+        _collections = string.Join(Environment.NewLine, Item.Collections);
+        _tags = string.Join(Environment.NewLine, Item.Tags);
+        _error = null;
+        _notice = null;
+    }
+
+    private Task SaveFromInboxAsync() =>
+        ExecuteCommandAsync(
+            (command, token) => command.SaveFromInboxAsync(Item.Id, Item.Title ?? _title, token),
+            "Saved to the library.");
+
+    private Task DismissAsync() =>
+        ExecuteCommandAsync(
+            (command, token) => command.DismissAsync(Item.Id, token),
+            "Dismissed. You can recover it for 30 days.");
+
+    private Task ToggleReadAsync() =>
+        ExecuteCommandAsync(
+            (command, token) => command.SetReadAsync(Item.Id, !Item.IsRead, token),
+            Item.IsRead ? "Marked unread." : "Marked read.");
+
+    private Task ToggleFavoriteAsync() =>
+        ExecuteCommandAsync(
+            (command, token) => command.SetFavoriteAsync(Item.Id, !Item.IsFavorite, token),
+            Item.IsFavorite ? "Removed from favorites." : "Added to favorites.");
+
+    private Task MoveToTrashAsync() =>
+        ExecuteCommandAsync(
+            (command, token) => command.MoveToTrashAsync(Item.Id, token),
+            "Moved to trash. You can recover it for 30 days.");
+
+    private Task RestoreDismissedAsync() =>
+        ExecuteCommandAsync(
+            (command, token) => command.RestoreDismissedAsync(Item.Id, token),
+            "Restored to the Inbox.");
+
+    private Task RestoreTrashAsync() =>
+        ExecuteCommandAsync(
+            (command, token) => command.RestoreTrashAsync(Item.Id, token),
+            "Restored to the library.");
+
+    private async Task SaveDetailsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_title))
+        {
+            _error = "A title is required.";
+            _notice = null;
+            return;
+        }
+
+        await ExecuteCommandAsync(
+            async (command, token) =>
+            {
+                await command.UpdateMetadataAsync(Item.Id, _title, _description, _notes, token);
+                await command.SetOrganizationAsync(
+                    Item.Id,
+                    SplitLines(_collections),
+                    SplitLines(_tags),
+                    token);
+            },
+            "Article details and organization saved.");
+    }
+
+    private async Task ExecuteCommandAsync(
+        Func<LibraryCommandService, CancellationToken, Task> action,
+        string successMessage)
+    {
+        if (!IsOnline || _busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        _notice = null;
+        try
+        {
+            await using var scope = ScopeFactory.CreateAsyncScope();
+            var command = scope.ServiceProvider.GetRequiredService<LibraryCommandService>();
+            await action(command, CancellationToken.None);
+            await OnChanged.InvokeAsync();
+            _notice = successMessage;
+        }
+        catch (ArgumentException)
+        {
+            _error = "Check the title and organization values, then try again.";
+        }
+        catch (InvalidOperationException)
+        {
+            _error = "This item changed or is no longer available. Refresh the list and try again.";
+        }
+        catch (KeyNotFoundException)
+        {
+            _error = "This item is no longer available. Refresh the list.";
+        }
+        catch (DbUpdateException)
+        {
+            _error = "Marginalia could not save the change. Your existing article data was not replaced.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string[] SplitLines(string value) =>
+        value.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+}
