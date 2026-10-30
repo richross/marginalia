@@ -20,7 +20,7 @@ public static class RssFeedParser
     /// </summary>
     /// <param name="body">The bounded XML response bytes.</param>
     /// <param name="feedUri">The final validated feed URI used to resolve relative links.</param>
-    /// <returns>The feed title and valid item links.</returns>
+    /// <returns>The feed title, description, and valid item links.</returns>
     /// <exception cref="FeedParseException">The document is unsafe, malformed, or unsupported.</exception>
     public static FeedDocument Parse(ReadOnlyMemory<byte> body, Uri feedUri)
     {
@@ -101,7 +101,10 @@ public static class RssFeedParser
                 ? root
                 : root.Descendants().FirstOrDefault(element => element.Name.LocalName == "channel") ?? root;
             var feedTitle = HtmlMetadataParser.CleanPlainText(ElementValue(titleContainer, "title"), 500);
-            return new FeedDocument(feedTitle, items);
+            var feedDescription = HtmlMetadataParser.CleanPlainText(
+                ElementValue(titleContainer, isAtom ? "subtitle" : "description"),
+                4_000);
+            return new FeedDocument(feedTitle, items, feedDescription);
         }
         catch (XmlException)
         {

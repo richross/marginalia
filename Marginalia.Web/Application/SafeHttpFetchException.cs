@@ -30,7 +30,7 @@ public sealed class SafeHttpFetchException : Exception
         SafeHttpFetchFailure.Timeout => "The public metadata request timed out.",
         SafeHttpFetchFailure.RemoteFailure => "The public metadata source returned an unsuccessful response.",
         SafeHttpFetchFailure.NetworkFailure => "The public metadata source could not be reached.",
-        SafeHttpFetchFailure.UnsupportedContentType => "The public source did not return supported HTML metadata.",
+        SafeHttpFetchFailure.UnsupportedContentType => "The public source did not return supported HTML, RSS, or Atom metadata.",
         SafeHttpFetchFailure.MetadataUnavailable => "The public source did not provide a usable title.",
         _ => "The public metadata request failed."
     };
@@ -65,7 +65,7 @@ public enum SafeHttpFetchFailure
     /// <summary>A network error prevented the request from completing.</summary>
     NetworkFailure,
 
-    /// <summary>The response did not contain supported HTML metadata.</summary>
+    /// <summary>The response did not contain supported HTML, RSS, or Atom metadata.</summary>
     UnsupportedContentType,
 
     /// <summary>The response contained no usable title.</summary>

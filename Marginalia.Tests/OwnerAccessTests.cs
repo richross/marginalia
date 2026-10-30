@@ -187,6 +187,25 @@ public sealed class OwnerAccessTests
     }
 
     [TestMethod]
+    public async Task SignedInOwnerReturnsToInboxWithoutAnotherChallenge()
+    {
+        using var factory = CreateFactory(injectTestAuthorization: true);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        client.DefaultRequestHeaders.Add(HeaderTestAuthenticationHandler.IdentityHeader, "owner");
+
+        using var home = await client.GetAsync("/");
+        Assert.AreEqual(System.Net.HttpStatusCode.Redirect, home.StatusCode);
+        Assert.AreEqual("/inbox", home.Headers.Location?.OriginalString);
+
+        using var login = await client.GetAsync("/account/login?returnUrl=%2Finbox");
+        Assert.AreEqual(System.Net.HttpStatusCode.Redirect, login.StatusCode);
+        Assert.AreEqual("/inbox", login.Headers.Location?.OriginalString);
+    }
+
+    [TestMethod]
     public async Task GitHubChallengeRequestsNoScopesUsesPkceAndKeepsReturnUrlLocal()
     {
         using var factory = CreateFactory(injectTestAuthorization: false, configureGitHub: true);

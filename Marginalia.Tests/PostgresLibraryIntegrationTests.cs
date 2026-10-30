@@ -587,7 +587,7 @@ public sealed class PostgresLibraryIntegrationTests
                 null));
         var service = new ManualUrlCaptureService(CreateCommandService(_dbContext), fetcher);
 
-        var result = await service.CaptureAsync(url, null, null, Guid.NewGuid());
+        var result = await service.CaptureAsync(url, string.Empty, string.Empty, Guid.NewGuid());
 
         Assert.AreEqual(ManualCaptureOutcome.Created, result.Capture.Outcome);
         Assert.IsNull(result.MetadataFailure);
@@ -612,6 +612,64 @@ public sealed class PostgresLibraryIntegrationTests
         Assert.AreEqual(ManualCaptureOutcome.TitleRequired, unavailable.Capture.Outcome);
         Assert.AreEqual(SafeHttpFetchFailure.NetworkFailure, unavailable.MetadataFailure);
         Assert.IsFalse(await _dbContext.Articles.AnyAsync(article => article.OriginalUrl == unavailableUrl));
+    }
+
+    [TestMethod]
+    [DataRow("application/rss+xml")]
+    [DataRow("application/atom+xml")]
+    [DataRow("application/xml")]
+    [DataRow("text/xml")]
+    public async Task ManualCaptureUsesFeedLevelMetadataWithoutSubscribing(string contentType)
+    {
+        var url = $"https://example.test/feed-capture/{Guid.NewGuid():N}";
+        var xml = contentType == "application/atom+xml"
+            ? """
+              <feed xmlns="http://www.w3.org/2005/Atom">
+                <title>Feed title</title><subtitle>Feed summary</subtitle>
+                <entry><title>Entry title</title><link href="https://example.test/article" /></entry>
+              </feed>
+              """
+            : """
+              <rss version="2.0"><channel>
+                <title>Feed title</title><description>Feed summary</description>
+                <item><title>Entry title</title><link>https://example.test/article</link></item>
+              </channel></rss>
+              """;
+        var service = new ManualUrlCaptureService(
+            CreateCommandService(_dbContext),
+            new SequenceSafeHttpFetcher(() => new SafeHttpFetchResponse(
+                HttpStatusCode.OK, new Uri(url), contentType, Encoding.UTF8.GetBytes(xml), null, null)));
+
+        var result = await service.CaptureAsync(url, string.Empty, "  ", Guid.NewGuid());
+
+        Assert.AreEqual(ManualCaptureOutcome.Created, result.Capture.Outcome);
+        Assert.IsNull(result.MetadataFailure);
+        var saved = await _dbContext.Articles.SingleAsync(article => article.OriginalUrl == url);
+        _articleIds.Add(saved.Id);
+        Assert.AreEqual("Feed title", saved.Title);
+        Assert.AreEqual("Feed summary", saved.Description);
+        Assert.AreEqual(ArticleState.Saved, saved.State);
+        Assert.IsFalse(saved.IsRead);
+        Assert.IsFalse(await _dbContext.FeedSubscriptions.AnyAsync(feed => feed.FeedUrl == url));
+    }
+
+    [TestMethod]
+    [DataRow("<rss><channel>")]
+    [DataRow("<!DOCTYPE rss [<!ENTITY x SYSTEM 'file:///private.txt'>]><rss><channel><title>&x;</title></channel></rss>")]
+    [DataRow("<rss><channel><item><title>Not the feed title</title></item></channel></rss>")]
+    public async Task ManualCaptureRejectsUnusableFeedMetadataWithoutSaving(string xml)
+    {
+        var url = $"https://example.test/invalid-feed-capture/{Guid.NewGuid():N}";
+        var service = new ManualUrlCaptureService(
+            CreateCommandService(_dbContext),
+            new SequenceSafeHttpFetcher(() => new SafeHttpFetchResponse(
+                HttpStatusCode.OK, new Uri(url), "application/rss+xml", Encoding.UTF8.GetBytes(xml), null, null)));
+
+        var result = await service.CaptureAsync(url, string.Empty, string.Empty, Guid.NewGuid());
+
+        Assert.AreEqual(ManualCaptureOutcome.TitleRequired, result.Capture.Outcome);
+        Assert.AreEqual(SafeHttpFetchFailure.MetadataUnavailable, result.MetadataFailure);
+        Assert.IsFalse(await _dbContext.Articles.AnyAsync(article => article.OriginalUrl == url));
     }
 
     [TestMethod]

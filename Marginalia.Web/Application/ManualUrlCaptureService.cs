@@ -74,12 +74,28 @@ public sealed class ManualUrlCaptureService(
         else
         {
             metadata = new PageMetadata(null, null);
+            if (response.ContentType?.ToLowerInvariant() is
+                "application/rss+xml" or "application/atom+xml" or "application/xml" or "text/xml")
+            {
+                try
+                {
+                    var feed = RssFeedParser.Parse(response.Body, response.FinalUri);
+                    metadata = new PageMetadata(feed.Title, feed.Description);
+                    metadataFailure = metadata.Title is null
+                        ? SafeHttpFetchFailure.MetadataUnavailable
+                        : null;
+                }
+                catch (FeedParseException)
+                {
+                    metadataFailure = SafeHttpFetchFailure.MetadataUnavailable;
+                }
+            }
         }
 
         var result = await libraryCommandService.CaptureAsync(
             url,
             string.IsNullOrWhiteSpace(title) ? metadata.Title : title,
-            description ?? metadata.Description,
+            string.IsNullOrWhiteSpace(description) ? metadata.Description : description,
             captureRequestId,
             confirmPurgedIdentity,
             cancellationToken);

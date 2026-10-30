@@ -259,10 +259,24 @@ var welcomeSetupNote = githubSettings is null
       """
     : string.Empty;
 welcomePage = welcomePage.Replace("<!--oauth-setup-note-->", welcomeSetupNote, StringComparison.Ordinal);
-app.MapGet("/", () => Results.Content(welcomePage, "text/html; charset=utf-8"))
-    .AllowAnonymous();
-app.MapGet("/account/login", (HttpContext context) =>
+app.MapGet("/", async (HttpContext context, IAuthorizationService authorization) =>
     {
+        if ((await authorization.AuthorizeAsync(context.User, GitHubOAuthSettings.OwnerPolicy)).Succeeded)
+        {
+            return (IResult)Results.Redirect("/inbox");
+        }
+
+        return Results.Content(welcomePage, "text/html; charset=utf-8");
+    })
+    .AllowAnonymous();
+app.MapGet("/account/login", async (HttpContext context, IAuthorizationService authorization) =>
+    {
+        var returnUrl = LocalReturnUrl.Normalize(context.Request.Query["returnUrl"].ToString());
+        if ((await authorization.AuthorizeAsync(context.User, GitHubOAuthSettings.OwnerPolicy)).Succeeded)
+        {
+            return (IResult)Results.Redirect(returnUrl);
+        }
+
         if (githubSettings is null)
         {
             return Results.Content(
@@ -285,7 +299,6 @@ app.MapGet("/account/login", (HttpContext context) =>
                 statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
-        var returnUrl = LocalReturnUrl.Normalize(context.Request.Query["returnUrl"].ToString());
         var properties = new AuthenticationProperties { RedirectUri = returnUrl };
         return Results.Challenge(properties, [GitHubOAuthSettings.AuthenticationScheme]);
     })

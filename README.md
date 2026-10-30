@@ -3,6 +3,11 @@
 Marginalia is a private, single-owner library for saved article links. It stores
 article metadata and organization, not article bodies or images.
 
+URL capture accepts HTML pages and RSS/Atom feed URLs. When the title is left
+blank, capture uses the page title or feed-level title and fills a blank
+description from source metadata. Saving a feed URL through Capture saves that
+link only; use Feeds to subscribe and receive individual entries in the Inbox.
+
 ## Local development
 
 Prerequisites:
@@ -41,6 +46,10 @@ other library routes remain owner-protected; after sign-in, the link returns to
 `/inbox`. Until OAuth is configured, the welcome page explains that setup is
 pending and the sign-in endpoint provides the local callback and configuration
 steps.
+An already signed-in owner visiting the root URL is redirected to the Inbox;
+the login endpoint also reuses the existing owner session instead of repeating
+OAuth. The secure application cookie is a browser-session cookie, not a
+cross-browser or permanent "remember me" credential.
 
 ## GitHub owner authentication
 

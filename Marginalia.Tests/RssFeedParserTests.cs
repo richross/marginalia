@@ -12,6 +12,7 @@ public sealed class RssFeedParserTests
         const string xml = """
             <rss version="2.0">
               <channel><title>Example &amp; Feed</title>
+                <description>Feed &amp; description</description>
                 <item>
                   <guid>entry-1</guid>
                   <title>First &amp; latest</title>
@@ -29,6 +30,7 @@ public sealed class RssFeedParserTests
             new Uri("https://feeds.example.test/feed.xml"));
 
         Assert.AreEqual("Example & Feed", document.Title);
+        Assert.AreEqual("Feed & description", document.Description);
         Assert.HasCount(1, document.Items);
         Assert.AreEqual("https://feeds.example.test/article/1?mode=full", document.Items[0].Url);
         Assert.AreEqual("First & latest", document.Items[0].Title);
@@ -43,6 +45,7 @@ public sealed class RssFeedParserTests
         const string xml = """
             <feed xmlns="http://www.w3.org/2005/Atom">
               <title>Atom feed</title>
+              <subtitle>Atom feed description</subtitle>
               <entry>
                 <id>tag:example.test,2026:item-1</id>
                 <title>Atom entry</title>
@@ -60,6 +63,7 @@ public sealed class RssFeedParserTests
             new Uri("https://feeds.example.test/feed.xml"));
 
         Assert.AreEqual("Atom feed", document.Title);
+        Assert.AreEqual("Atom feed description", document.Description);
         Assert.HasCount(1, document.Items);
         Assert.AreEqual("https://example.test/article", document.Items[0].Url);
         Assert.AreEqual("Short summary", document.Items[0].Description);
